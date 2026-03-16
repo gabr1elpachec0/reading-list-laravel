@@ -16,13 +16,13 @@ class ReadingListController extends Controller
             'status' => ['nullable', Rule::enum(ReadingStatus::class)],
         ]);
 
-        $books = $request->user()
-            ->books()
-            ->when($request->query('status'), function ($query, string $status) {
-                $query->wherePivot('status', $status);
-            })
-            ->orderByPivot('updated_at', 'desc')
-            ->get();
+        $query = $request->user()->books();
+
+        if ($status = $request->query('status')) {
+            $query->wherePivot('status', $status);
+        }
+
+        $books = $query->orderByPivot('updated_at', 'desc')->get();
 
         if ($request->wantsJson()) {
             return response()->json($books);
