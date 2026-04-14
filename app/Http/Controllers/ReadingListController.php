@@ -14,23 +14,34 @@ class ReadingListController extends Controller
     {
         $request->validate([
             'status' => ['nullable', Rule::enum(ReadingStatus::class)],
+            'page'   => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $query = $request->user()->books();
+        $user = $request->user();
+
+        $counts = [
+            'all'          => $user->books()->count(),
+            'reading'      => $user->books()->wherePivot('status', 'reading')->count(),
+            'read'         => $user->books()->wherePivot('status', 'read')->count(),
+            'want_to_read' => $user->books()->wherePivot('status', 'want_to_read')->count(),
+        ];
+
+        $query = $user->books();
 
         if ($status = $request->query('status')) {
             $query->wherePivot('status', $status);
         }
 
-        $books = $query->orderByPivot('updated_at', 'desc')->get();
+        $books = $query->orderByPivot('updated_at', 'desc')->paginate(5)->withQueryString();
 
         if ($request->wantsJson()) {
             return response()->json($books);
         }
 
         return Inertia::render('ReadingList/Index', [
-            'books' => $books,
+            'books'         => $books,
             'currentStatus' => $request->query('status'),
+            'counts'        => $counts,
         ]);
     }
 

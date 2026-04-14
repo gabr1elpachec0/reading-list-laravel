@@ -3,6 +3,8 @@ import {
     BookOpenCheck,
     BookOpenText,
     Bookmark,
+    ChevronLeft,
+    ChevronRight,
     Library,
     Plus,
     Search,
@@ -32,12 +34,30 @@ const STATUS_TABS: StatusTab[] = [
     { value: 'want_to_read', label: STATUS_LABELS.want_to_read, icon: Bookmark },
 ];
 
-type Props = {
-    books: Book[];
-    currentStatus: ReadingStatus | null;
+type PaginatedBooks = {
+    data: Book[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
 };
 
-export default function ReadingListIndex({ books, currentStatus }: Props) {
+type Counts = {
+    all: number;
+    reading: number;
+    read: number;
+    want_to_read: number;
+};
+
+type Props = {
+    books: PaginatedBooks;
+    currentStatus: ReadingStatus | null;
+    counts: Counts;
+};
+
+export default function ReadingListIndex({ books, currentStatus, counts }: Props) {
     function handleFilterChange(status: ReadingStatus | null) {
         const url = status
             ? readingList.index.url({ query: { status } })
@@ -46,12 +66,18 @@ export default function ReadingListIndex({ books, currentStatus }: Props) {
         router.get(url, {}, { preserveState: true, preserveScroll: true });
     }
 
-    const counts = {
-        all: books.length,
-        reading: books.filter((b) => b.pivot.status === 'reading').length,
-        read: books.filter((b) => b.pivot.status === 'read').length,
-        want_to_read: books.filter((b) => b.pivot.status === 'want_to_read').length,
-    };
+    function handlePageChange(page: number) {
+        const params: Record<string, string | number> = { page };
+        if (currentStatus) params.status = currentStatus;
+
+        router.get(readingList.index.url({ query: params }), {}, {
+            preserveState: true,
+            preserveScroll: false,
+        });
+    }
+
+    const tabCount = (tab: StatusTab) =>
+        tab.value === null ? counts.all : counts[tab.value];
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -65,9 +91,9 @@ export default function ReadingListIndex({ books, currentStatus }: Props) {
                             Minha Lista de Leitura
                         </h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            {books.length === 0
+                            {counts.all === 0
                                 ? 'Comece adicionando livros à sua lista.'
-                                : `${books.length} ${books.length === 1 ? 'livro' : 'livros'} na sua lista.`}
+                                : `${counts.all} ${counts.all === 1 ? 'livro' : 'livros'} na sua lista.`}
                         </p>
                     </div>
 
@@ -83,10 +109,7 @@ export default function ReadingListIndex({ books, currentStatus }: Props) {
                 <div className="flex gap-2 overflow-x-auto pb-1">
                     {STATUS_TABS.map((tab) => {
                         const isActive = currentStatus === tab.value;
-                        const count =
-                            tab.value === null
-                                ? counts.all
-                                : counts[tab.value];
+                        const count = tabCount(tab);
 
                         return (
                             <Button
@@ -98,7 +121,7 @@ export default function ReadingListIndex({ books, currentStatus }: Props) {
                             >
                                 <tab.icon className="size-3.5" />
                                 {tab.label}
-                                {!currentStatus && count > 0 && (
+                                {count > 0 && (
                                     <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
                                         isActive
                                             ? 'bg-primary-foreground/20 text-primary-foreground'
@@ -112,19 +135,113 @@ export default function ReadingListIndex({ books, currentStatus }: Props) {
                     })}
                 </div>
 
-                {/* Book Grid */}
-                {books.length > 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {books.map((book) => (
-                            <BookCard key={book.id} book={book} />
-                        ))}
-                    </div>
+                {/* Book List */}
+                {books.data.length > 0 ? (
+                    <>
+                        <div className="flex flex-col gap-3">
+                            {books.data.map((book) => (
+                                <BookCard key={book.id} book={book} />
+                            ))}
+                        </div>
+
+                        <Pagination
+                            currentPage={books.current_page}
+                            lastPage={books.last_page}
+                            from={books.from}
+                            to={books.to}
+                            total={books.total}
+                            onPageChange={handlePageChange}
+                        />
+                    </>
                 ) : (
                     <EmptyState hasFilter={!!currentStatus} />
                 )}
             </div>
         </AppLayout>
     );
+}
+
+type PaginationProps = {
+    currentPage: number;
+    lastPage: number;
+    from: number | null;
+    to: number | null;
+    total: number;
+    onPageChange: (page: number) => void;
+};
+
+function Pagination({ currentPage, lastPage, from, to, total, onPageChange }: PaginationProps) {
+    if (lastPage <= 1) return null;
+
+    const pages = buildPageRange(currentPage, lastPage);
+
+    return (
+        <div className="flex items-center justify-between gap-4 border-t pt-4">
+            <p className="text-sm text-muted-foreground">
+                {from && to ? `${from}–${to} de ${total}` : `${total} ${total === 1 ? 'livro' : 'livros'}`}
+            </p>
+
+            <div className="flex items-center gap-1">
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    disabled={currentPage === 1}
+                    onClick={() => onPageChange(currentPage - 1)}
+                >
+                    <ChevronLeft className="size-4" />
+                </Button>
+
+                {pages.map((page, i) =>
+                    page === '...' ? (
+                        <span key={`ellipsis-${i}`} className="px-1 text-sm text-muted-foreground">
+                            …
+                        </span>
+                    ) : (
+                        <Button
+                            key={page}
+                            variant={page === currentPage ? 'default' : 'outline'}
+                            size="icon"
+                            className="size-8 text-sm"
+                            onClick={() => onPageChange(page as number)}
+                        >
+                            {page}
+                        </Button>
+                    ),
+                )}
+
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    disabled={currentPage === lastPage}
+                    onClick={() => onPageChange(currentPage + 1)}
+                >
+                    <ChevronRight className="size-4" />
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+function buildPageRange(current: number, last: number): (number | '...')[] {
+    if (last <= 7) {
+        return Array.from({ length: last }, (_, i) => i + 1);
+    }
+
+    const pages: (number | '...')[] = [1];
+
+    if (current > 3) pages.push('...');
+
+    for (let p = Math.max(2, current - 1); p <= Math.min(last - 1, current + 1); p++) {
+        pages.push(p);
+    }
+
+    if (current < last - 2) pages.push('...');
+
+    pages.push(last);
+
+    return pages;
 }
 
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
