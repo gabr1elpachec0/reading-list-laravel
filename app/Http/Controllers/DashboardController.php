@@ -13,9 +13,9 @@ class DashboardController extends Controller
             ->books()
             ->toBase()
             ->selectRaw("count(*) as total")
-            ->selectRaw("count(*) filter (where status = 'reading') as reading")
-            ->selectRaw("count(*) filter (where status = 'read') as read")
-            ->selectRaw("count(*) filter (where status = 'want_to_read') as want_to_read")
+            ->selectRaw("sum(case when status = 'reading' then 1 else 0 end) as reading")
+            ->selectRaw("sum(case when status = 'read' then 1 else 0 end) as `read`")
+            ->selectRaw("sum(case when status = 'want_to_read' then 1 else 0 end) as want_to_read")
             ->first();
 
         return Inertia::render('dashboard', [
